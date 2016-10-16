@@ -1,0 +1,259 @@
+diff -Naur ORB_SLAM2/src/LocalMapping.cc ORB_SLAM2_wopangolin/src/LocalMapping.cc
+--- ORB_SLAM2/src/LocalMapping.cc	2016-10-16 16:35:06.000000000 +0300
++++ ORB_SLAM2_wopangolin/src/LocalMapping.cc	2016-10-16 16:33:48.000000000 +0300
+@@ -25,6 +25,9 @@
+ 
+ #include<mutex>
+ 
++#include <sys/time.h>
++#include <unistd.h>
++
+ namespace ORB_SLAM2
+ {
+ 
+diff -Naur ORB_SLAM2/src/LoopClosing.cc ORB_SLAM2_wopangolin/src/LoopClosing.cc
+--- ORB_SLAM2/src/LoopClosing.cc	2016-10-16 16:35:06.000000000 +0300
++++ ORB_SLAM2_wopangolin/src/LoopClosing.cc	2016-10-16 16:33:48.000000000 +0300
+@@ -31,6 +31,8 @@
+ #include<mutex>
+ #include<thread>
+ 
++#include <sys/time.h>
++#include <unistd.h>
+ 
+ namespace ORB_SLAM2
+ {
+diff -Naur ORB_SLAM2/src/ORBextractor.cc ORB_SLAM2_wopangolin/src/ORBextractor.cc
+--- ORB_SLAM2/src/ORBextractor.cc	2016-10-16 16:35:06.000000000 +0300
++++ ORB_SLAM2_wopangolin/src/ORBextractor.cc	2016-10-16 16:33:48.000000000 +0300
+@@ -54,7 +54,7 @@
+ */
+ 
+ 
+-#include <opencv2/core/core.hpp>
++#include <opencv2/opencv.hpp>
+ #include <opencv2/highgui/highgui.hpp>
+ #include <opencv2/features2d/features2d.hpp>
+ #include <opencv2/imgproc/imgproc.hpp>
+diff -Naur ORB_SLAM2/src/ORBmatcher.cc ORB_SLAM2_wopangolin/src/ORBmatcher.cc
+--- ORB_SLAM2/src/ORBmatcher.cc	2016-10-16 16:35:06.000000000 +0300
++++ ORB_SLAM2_wopangolin/src/ORBmatcher.cc	2016-10-16 16:33:48.000000000 +0300
+@@ -27,7 +27,7 @@
+ 
+ #include "Thirdparty/DBoW2/DBoW2/FeatureVector.h"
+ 
+-#include<stdint-gcc.h>
++#include<stdint.h>
+ 
+ using namespace std;
+ 
+diff -Naur ORB_SLAM2/src/System.cc ORB_SLAM2_wopangolin/src/System.cc
+--- ORB_SLAM2/src/System.cc	2016-10-16 16:35:06.000000000 +0300
++++ ORB_SLAM2_wopangolin/src/System.cc	2016-10-16 16:33:48.000000000 +0300
+@@ -23,8 +23,12 @@
+ #include "System.h"
+ #include "Converter.h"
+ #include <thread>
+-#include <pangolin/pangolin.h>
+ #include <iomanip>
++#include <sys/time.h>
++//#include <pangolin/pangolin.h>
++
++//#include <sys/time.h>
++#include <unistd.h>
+ 
+ namespace ORB_SLAM2
+ {
+@@ -62,7 +66,7 @@
+     cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
+ 
+     mpVocabulary = new ORBVocabulary();
+-    bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
++    bool bVocLoad = mpVocabulary->loadFromBinaryFile(strVocFile);
+     if(!bVocLoad)
+     {
+         cerr << "Wrong path to vocabulary. " << endl;
+@@ -77,14 +81,10 @@
+     //Create the Map
+     mpMap = new Map();
+ 
+-    //Create Drawers. These are used by the Viewer
+-    mpFrameDrawer = new FrameDrawer(mpMap);
+-    mpMapDrawer = new MapDrawer(mpMap, strSettingsFile);
+ 
+     //Initialize the Tracking thread
+     //(it will live in the main thread of execution, the one that called this constructor)
+-    mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
+-                             mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
++    mpTracker = new Tracking(this, mpVocabulary, mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
+ 
+     //Initialize the Local Mapping thread and launch
+     mpLocalMapper = new LocalMapping(mpMap, mSensor==MONOCULAR);
+@@ -94,12 +94,6 @@
+     mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
+     mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
+ 
+-    //Initialize the Viewer thread and launch
+-    mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile);
+-    if(bUseViewer)
+-        mptViewer = new thread(&Viewer::Run, mpViewer);
+-
+-    mpTracker->SetViewer(mpViewer);
+ 
+     //Set pointers between threads
+     mpTracker->SetLocalMapper(mpLocalMapper);
+@@ -269,16 +263,15 @@
+ {
+     mpLocalMapper->RequestFinish();
+     mpLoopCloser->RequestFinish();
+-    mpViewer->RequestFinish();
+ 
+     // Wait until all thread have effectively stopped
+     while(!mpLocalMapper->isFinished() || !mpLoopCloser->isFinished()  ||
+-          !mpViewer->isFinished()      || mpLoopCloser->isRunningGBA())
++          mpLoopCloser->isRunningGBA())
+     {
+         usleep(5000);
+     }
+ 
+-    pangolin::BindToContext("ORB-SLAM2: Map Viewer");
++    //pangolin::BindToContext("ORB-SLAM2: Map Viewer");
+ }
+ 
+ void System::SaveTrajectoryTUM(const string &filename)
+diff -Naur ORB_SLAM2/src/Tracking.cc ORB_SLAM2_wopangolin/src/Tracking.cc
+--- ORB_SLAM2/src/Tracking.cc	2016-10-16 16:35:06.000000000 +0300
++++ ORB_SLAM2_wopangolin/src/Tracking.cc	2016-10-16 16:33:48.000000000 +0300
+@@ -25,14 +25,13 @@
+ #include<opencv2/features2d/features2d.hpp>
+ 
+ #include"ORBmatcher.h"
+-#include"FrameDrawer.h"
+ #include"Converter.h"
+ #include"Map.h"
+ #include"Initializer.h"
+ 
+ #include"Optimizer.h"
+ #include"PnPsolver.h"
+-
++#include <sys/time.h>
+ #include<iostream>
+ 
+ #include<mutex>
+@@ -43,10 +42,10 @@
+ namespace ORB_SLAM2
+ {
+ 
+-Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Map *pMap, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor):
++Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, Map *pMap, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor):
+     mState(NO_IMAGES_YET), mSensor(sensor), mbOnlyTracking(false), mbVO(false), mpORBVocabulary(pVoc),
+     mpKeyFrameDB(pKFDB), mpInitializer(static_cast<Initializer*>(NULL)), mpSystem(pSys),
+-    mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpMap(pMap), mnLastRelocFrameId(0)
++    mpMap(pMap), mnLastRelocFrameId(0)
+ {
+     // Load camera parameters from settings file
+ 
+@@ -158,10 +157,10 @@
+     mpLoopClosing=pLoopClosing;
+ }
+ 
+-void Tracking::SetViewer(Viewer *pViewer)
+-{
+-    mpViewer=pViewer;
+-}
++//void Tracking::SetViewer(Viewer *pViewer)
++//{
++//    mpViewer=pViewer;
++//}
+ 
+ 
+ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat &imRectRight, const double &timestamp)
+@@ -253,8 +252,10 @@
+         else
+             cvtColor(mImGray,mImGray,CV_BGRA2GRAY);
+     }
++    
+ 
+     if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET)
++//    if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET || mpMap->KeyFramesInMap()<=6)
+         mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
+     else
+         mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
+@@ -283,7 +284,7 @@
+         else
+             MonocularInitialization();
+ 
+-        mpFrameDrawer->Update(this);
++        //mpFrameDrawer->Update(this);
+ 
+         if(mState!=OK)
+             return;
+@@ -414,8 +415,6 @@
+         else
+             mState=LOST;
+ 
+-        // Update drawer
+-        mpFrameDrawer->Update(this);
+ 
+         // If tracking were good, check if we insert a keyframe
+         if(bOK)
+@@ -431,7 +430,7 @@
+             else
+                 mVelocity = cv::Mat();
+ 
+-            mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
++            //mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+ 
+             // Clean temporal point matches
+             for(int i=0; i<mCurrentFrame.N; i++)
+@@ -554,7 +553,7 @@
+ 
+         mpMap->mvpKeyFrameOrigins.push_back(pKFini);
+ 
+-        mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
++//        mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+ 
+         mState=OK;
+     }
+@@ -689,6 +688,7 @@
+     float medianDepth = pKFini->ComputeSceneMedianDepth(2);
+     float invMedianDepth = 1.0f/medianDepth;
+ 
++//    if(medianDepth<0 || pKFcur->TrackedMapPoints(1)<90)
+     if(medianDepth<0 || pKFcur->TrackedMapPoints(1)<100)
+     {
+         cout << "Wrong initialization, reseting..." << endl;
+@@ -729,7 +729,7 @@
+ 
+     mpMap->SetReferenceMapPoints(mvpLocalMapPoints);
+ 
+-    mpMapDrawer->SetCurrentCameraPose(pKFcur->GetPose());
++//    mpMapDrawer->SetCurrentCameraPose(pKFcur->GetPose());
+ 
+     mpMap->mvpKeyFrameOrigins.push_back(pKFini);
+ 
+@@ -1516,11 +1516,11 @@
+ 
+ void Tracking::Reset()
+ {
+-    mpViewer->RequestStop();
++//    mpViewer->RequestStop();
+ 
+-    cout << "System Reseting" << endl;
+-    while(!mpViewer->isStopped())
+-        usleep(3000);
++//    cout << "System Reseting" << endl;
++//    while(!mpViewer->isStopped())
++//        usleep(3000);
+ 
+     // Reset Local Mapping
+     cout << "Reseting Local Mapper...";
+@@ -1555,7 +1555,7 @@
+     mlFrameTimes.clear();
+     mlbLost.clear();
+ 
+-    mpViewer->Release();
++//    mpViewer->Release();
+ }
+ 
+ void Tracking::ChangeCalibration(const string &strSettingPath)
